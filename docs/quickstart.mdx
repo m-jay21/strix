@@ -20,7 +20,7 @@ description: "Install Strix and run your first security scan"
     Sigstore provenance before extracting. To skip those checks (not recommended):
 
     ```bash
-    STRIX_INSTALL_SKIP_VERIFY=1 curl -sSL https://strix.ai/install | bash
+    curl -sSL https://strix.ai/install | STRIX_INSTALL_SKIP_VERIFY=1 bash
     ```
   </Tab>
   <Tab title="pipx">

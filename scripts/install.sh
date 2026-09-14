@@ -143,7 +143,8 @@ abort_unverified() {
     if [[ -x "$INSTALL_DIR/strix" || -x "$INSTALL_DIR/strix.exe" ]]; then
         echo -e "${MUTED}Existing Strix installation left unchanged.${NC}"
     fi
-    echo -e "${RED}Re-run with STRIX_INSTALL_SKIP_VERIFY=1 to override (at your own risk).${NC}"
+    echo -e "${RED}Re-run with: curl -sSL https://strix.ai/install | STRIX_INSTALL_SKIP_VERIFY=1 bash${NC}"
+    echo -e "${MUTED}(at your own risk)${NC}"
     exit 1
 }
 
