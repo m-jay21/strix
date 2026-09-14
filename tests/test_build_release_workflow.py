@@ -11,9 +11,7 @@ import pytest
 import yaml
 
 
-WORKFLOW = (
-    Path(__file__).resolve().parent.parent / ".github" / "workflows" / "build-release.yml"
-)
+WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "build-release.yml"
 ATTEST_PIN = "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6"
 
 
@@ -83,7 +81,9 @@ def test_build_publishes_and_uploads_per_target_attestation_bundle() -> None:
     assert "attest-unix.outputs.bundle-path" in str(publish["env"]["BUNDLE_PATH"])
     assert "attest-windows.outputs.bundle-path" in str(publish["env"]["BUNDLE_PATH"])
 
-    upload = next(step for step in _steps("build") if "upload-artifact@" in str(step.get("uses", "")))
+    upload = next(
+        step for step in _steps("build") if "upload-artifact@" in str(step.get("uses", ""))
+    )
     paths = str(upload["with"]["path"])
     assert "dist/release/*.intoto.jsonl" in paths
     assert "dist/release/*.tar.gz" in paths
@@ -146,11 +146,7 @@ def test_sha256sums_script_hashes_product_files_only(tmp_path: Path) -> None:
 
     sums_path = release_dir / "SHA256SUMS"
     assert sums_path.is_file()
-    lines = [
-        line
-        for line in sums_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
+    lines = [line for line in sums_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     names = {line.split()[-1] for line in lines}
     assert names == {
         "strix-1.0.0-linux-x86_64.tar.gz",
