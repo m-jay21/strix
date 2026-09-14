@@ -62,16 +62,32 @@ exit 1
         mock_bin / "curl",
         """#!/bin/sh
 output=""
+url=""
 while [ "$#" -gt 0 ]; do
   if [ "$1" = "-o" ]; then
     output="$2"
     shift 2
     continue
   fi
+  case "$1" in
+    http://*|https://*) url="$1" ;;
+  esac
   printf '%s\\n' "$1" >> "$STRIX_TEST_CURL_LOG"
   shift
 done
-cp "$STRIX_TEST_ARCHIVE" "$output"
+case "$url" in
+  */SHA256SUMS)
+    hash=$(sha256sum "$STRIX_TEST_ARCHIVE" | awk '{print $1}')
+    name=$(basename "$STRIX_TEST_ARCHIVE")
+    printf '%s  %s\\n' "$hash" "$name" > "$output"
+    ;;
+  *.intoto.jsonl)
+    printf '{"test":true}\\n' > "$output"
+    ;;
+  *)
+    cp "$STRIX_TEST_ARCHIVE" "$output"
+    ;;
+esac
 """,
     )
     return mock_bin

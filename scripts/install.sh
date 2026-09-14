@@ -85,6 +85,8 @@ fi
 
 filename="$APP-${specific_version}-${target}${archive_ext}"
 url="https://github.com/$REPO/releases/download/v${specific_version}/$filename"
+sums_name="SHA256SUMS"
+sums_url="https://github.com/$REPO/releases/download/v${specific_version}/$sums_name"
 bundle_name="strix-${target}.intoto.jsonl"
 bundle_url="https://github.com/$REPO/releases/download/v${specific_version}/$bundle_name"
 SIGNER_WORKFLOW="$REPO/.github/workflows/build-release.yml"
@@ -137,6 +139,55 @@ abort_unverified() {
     echo -e "${RED}✗ Refusing to install an unverified binary.${NC}"
     echo -e "${RED}Re-run with STRIX_INSTALL_SKIP_VERIFY=1 to override (at your own risk).${NC}"
     exit 1
+}
+
+# Fail-closed checksum check against the published SHA256SUMS manifest.
+# Same-origin only (detects corruption / single-asset swap). Exact field
+# match — do not grep the filename as a regex ('.' would be wild).
+verify_checksum() {
+    local file=$1
+
+    if [ -n "${STRIX_INSTALL_SKIP_VERIFY:-}" ]; then
+        echo -e "${YELLOW}⚠ STRIX_INSTALL_SKIP_VERIFY set — skipping checksum verification (at your own risk).${NC}"
+        return 0
+    fi
+
+    local sha_cmd=""
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha_cmd="sha256sum"
+    elif command -v shasum >/dev/null 2>&1; then
+        sha_cmd="shasum -a 256"
+    else
+        echo -e "${RED}✗ Neither 'sha256sum' nor 'shasum' is available; cannot verify integrity.${NC}"
+        abort_unverified
+    fi
+
+    if [ ! -s "$sums_name" ]; then
+        echo -e "${RED}✗ Missing checksum manifest ${sums_name}.${NC}"
+        abort_unverified
+    fi
+
+    echo -e "${MUTED}Verifying checksum...${NC}"
+
+    local expected
+    expected=$(awk -v file="$file" '
+        $2 == file || $2 == ("*" file) { print $1; exit }
+    ' "$sums_name")
+    if [ -z "$expected" ]; then
+        echo -e "${RED}✗ No SHA256SUMS entry for ${file}.${NC}"
+        abort_unverified
+    fi
+
+    local actual
+    actual=$($sha_cmd "$file" | awk '{print $1}')
+    if [ "$actual" != "$expected" ]; then
+        echo -e "${RED}✗ Checksum mismatch for ${file}.${NC}"
+        echo -e "${MUTED}Expected: ${NC}$expected"
+        echo -e "${MUTED}Actual:   ${NC}$actual"
+        abort_unverified
+    fi
+
+    echo -e "${GREEN}✓ Checksum verified${NC}"
 }
 
 gh_can_verify_attestation() {
@@ -231,13 +282,23 @@ download_and_install() {
         exit 1
     fi
 
-    echo -e "${MUTED}Downloading provenance...${NC}"
-    if ! curl -sfL -o "$bundle_name" "$bundle_url" || [ ! -s "$bundle_name" ]; then
-        echo -e "${RED}✗ Failed to download provenance bundle.${NC}"
-        abort_unverified
-    fi
+    if [ -n "${STRIX_INSTALL_SKIP_VERIFY:-}" ]; then
+        echo -e "${YELLOW}⚠ STRIX_INSTALL_SKIP_VERIFY set — skipping checksum and provenance checks.${NC}"
+    else
+        echo -e "${MUTED}Downloading checksums...${NC}"
+        if ! curl -sfL -o "$sums_name" "$sums_url" || [ ! -s "$sums_name" ]; then
+            echo -e "${RED}✗ Failed to download checksum manifest.${NC}"
+            abort_unverified
+        fi
+        verify_checksum "$filename"
 
-    verify_provenance "$filename" "$bundle_name"
+        echo -e "${MUTED}Downloading provenance...${NC}"
+        if ! curl -sfL -o "$bundle_name" "$bundle_url" || [ ! -s "$bundle_name" ]; then
+            echo -e "${RED}✗ Failed to download provenance bundle.${NC}"
+            abort_unverified
+        fi
+        verify_provenance "$filename" "$bundle_name"
+    fi
 
     echo -e "${MUTED}Extracting...${NC}"
     if [ "$os" = "windows" ]; then
