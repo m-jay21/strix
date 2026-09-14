@@ -32,6 +32,10 @@ jobs:
             wheel-platform: win_amd64
 
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
@@ -92,6 +96,25 @@ jobs:
             tar -C dist/release -czvf "dist/release/strix-${VERSION}-${{ matrix.target }}.tar.gz" "strix-${VERSION}-${{ matrix.target }}"
           fi
 
+      # Sigstore keyless provenance (GitHub OIDC). Attest the published archive
+      # and wheel on the runner that built them so the installer can pin
+      # usestrix/strix/.github/workflows/build-release.yml.
+      - name: Attest Unix archive and wheel
+        if: runner.os != 'Windows'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6  # v4.2.2
+        with:
+          subject-path: |
+            dist/release/*.tar.gz
+            dist/*.whl
+
+      - name: Attest Windows archive and wheel
+        if: runner.os == 'Windows'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6  # v4.2.2
+        with:
+          subject-path: |
+            dist/release/*.zip
+            dist/*.whl
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: strix-${{ matrix.target }}
@@ -106,6 +129,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
 
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
@@ -115,9 +140,9 @@ jobs:
 
       # Same-origin integrity manifest for every release asset. Hashes use bare
       # basenames (no directory prefix) so the installer can match the file it
-      # downloaded into a temp dir. Detects corruption / single-asset swap; not
-      # a defense against a fully compromised release pipeline — that needs
-      # Sigstore / build-provenance attestation (handled separately in #1267).
+      # downloaded into a temp dir. Detects corruption / single-asset swap.
+      # Sigstore provenance on the archive itself is what binds the bytes to
+      # this workflow (#1267).
       - name: Generate SHA256SUMS
         working-directory: release
         shell: bash
@@ -128,6 +153,11 @@ jobs:
           done < <(find . -type f ! -name SHA256SUMS -print0 | sort -z) >> SHA256SUMS
           echo "=== SHA256SUMS ==="
           cat SHA256SUMS
+
+      - name: Attest SHA256SUMS
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6  # v4.2.2
+        with:
+          subject-path: release/SHA256SUMS
 
       - name: Create Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2
