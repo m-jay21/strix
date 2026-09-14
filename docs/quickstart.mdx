@@ -7,6 +7,7 @@ description: "Install Strix and run your first security scan"
 
 - Docker (running)
 - An LLM API key from any [supported provider](/llm-providers/overview) (OpenAI, Anthropic, Google, etc.)
+- For the curl installer: [GitHub CLI](https://cli.github.com/) (`gh`) or [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) — used to verify Sigstore provenance before extract
 
 ## Installation
 
@@ -17,7 +18,8 @@ description: "Install Strix and run your first security scan"
     ```
 
     The installer downloads the release archive, checks `SHA256SUMS`, then verifies
-    Sigstore provenance before extracting. To skip those checks (not recommended):
+    Sigstore provenance with `gh` or `cosign` before extracting. To skip those checks
+    (not recommended):
 
     ```bash
     curl -sSL https://strix.ai/install | STRIX_INSTALL_SKIP_VERIFY=1 bash
