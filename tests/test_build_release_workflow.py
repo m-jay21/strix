@@ -165,6 +165,17 @@ def test_sha256sums_script_hashes_product_files_only(tmp_path: Path) -> None:
         assert digest == expected
 
 
+def test_release_notes_include_manual_verification() -> None:
+    create = _step_named("release", "Create Release")
+    body = str(create["with"]["body"])
+    assert "## Verify this release" in body
+    assert "sha256sum -c --ignore-missing SHA256SUMS" in body
+    assert "gh attestation verify" in body
+    assert "usestrix/strix/.github/workflows/build-release.yml" in body
+    assert "docs.strix.ai/quickstart#verify-a-downloaded-release" in body
+    assert create["with"]["generate_release_notes"] is True
+
+
 @pytest.mark.parametrize(
     ("job_name", "step_name"),
     [
