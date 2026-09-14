@@ -85,6 +85,10 @@ fi
 
 filename="$APP-${specific_version}-${target}${archive_ext}"
 url="https://github.com/$REPO/releases/download/v${specific_version}/$filename"
+bundle_name="strix-${target}.intoto.jsonl"
+bundle_url="https://github.com/$REPO/releases/download/v${specific_version}/$bundle_name"
+SIGNER_WORKFLOW="$REPO/.github/workflows/build-release.yml"
+CERT_IDENTITY_REGEXP="^https://github.com/${REPO}/.github/workflows/build-release.yml"
 
 print_message() {
     local level=$1
@@ -129,6 +133,75 @@ check_existing_installation() {
     fi
 }
 
+abort_unverified() {
+    echo -e "${RED}✗ Refusing to install an unverified binary.${NC}"
+    echo -e "${RED}Re-run with STRIX_INSTALL_SKIP_VERIFY=1 to override (at your own risk).${NC}"
+    exit 1
+}
+
+gh_can_verify_attestation() {
+    command -v gh >/dev/null 2>&1 && gh attestation verify --help >/dev/null 2>&1
+}
+
+cosign_can_verify_attestation() {
+    command -v cosign >/dev/null 2>&1 && cosign verify-blob-attestation --help >/dev/null 2>&1
+}
+
+# Fail-closed provenance check. The bundle is signed Sigstore SLSA provenance
+# for this workflow; checksum verification (same-origin) is a separate step.
+# Prefer `gh attestation verify`; otherwise a local `cosign`. We do not
+# bootstrap cosign — current releases are ~140MB, which is too heavy for
+# curl|bash. Missing verifier or a failed check aborts before extract.
+verify_provenance() {
+    local file=$1
+    local bundle=$2
+
+    if [ -n "${STRIX_INSTALL_SKIP_VERIFY:-}" ]; then
+        echo -e "${YELLOW}⚠ STRIX_INSTALL_SKIP_VERIFY set — skipping provenance verification (at your own risk).${NC}"
+        return 0
+    fi
+
+    if [ ! -s "$bundle" ]; then
+        echo -e "${RED}✗ Missing provenance bundle ${bundle}.${NC}"
+        abort_unverified
+    fi
+
+    echo -e "${MUTED}Verifying Sigstore provenance...${NC}"
+
+    if gh_can_verify_attestation; then
+        if gh attestation verify "$file" \
+            --repo "$REPO" \
+            --bundle "$bundle" \
+            --signer-workflow "$SIGNER_WORKFLOW" \
+            --predicate-type "https://slsa.dev/provenance/v1" \
+            --deny-self-hosted-runners; then
+            echo -e "${GREEN}✓ Provenance verified${NC} ${MUTED}(gh)${NC}"
+            return 0
+        fi
+        echo -e "${RED}✗ gh attestation verify failed.${NC}"
+        abort_unverified
+    fi
+
+    if cosign_can_verify_attestation; then
+        if cosign verify-blob-attestation \
+            --bundle "$bundle" \
+            --new-bundle-format \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --certificate-identity-regexp "$CERT_IDENTITY_REGEXP" \
+            --type slsaprovenance1 \
+            "$file"; then
+            echo -e "${GREEN}✓ Provenance verified${NC} ${MUTED}(cosign)${NC}"
+            return 0
+        fi
+        echo -e "${RED}✗ cosign verify-blob-attestation failed.${NC}"
+        abort_unverified
+    fi
+
+    echo -e "${RED}✗ Neither a usable 'gh' nor 'cosign' was found; cannot verify provenance.${NC}"
+    echo -e "${MUTED}Install GitHub CLI (gh) or cosign, then re-run.${NC}"
+    abort_unverified
+}
+
 check_version() {
     check_existing_installation
 
@@ -157,6 +230,14 @@ download_and_install() {
         echo -e "${RED}Download failed${NC}"
         exit 1
     fi
+
+    echo -e "${MUTED}Downloading provenance...${NC}"
+    if ! curl -sfL -o "$bundle_name" "$bundle_url" || [ ! -s "$bundle_name" ]; then
+        echo -e "${RED}✗ Failed to download provenance bundle.${NC}"
+        abort_unverified
+    fi
+
+    verify_provenance "$filename" "$bundle_name"
 
     echo -e "${MUTED}Extracting...${NC}"
     if [ "$os" = "windows" ]; then

@@ -49,6 +49,16 @@ esac
     )
     _write_executable(mock_bin / "docker", "#!/bin/sh\nexit 0\n")
     _write_executable(
+        mock_bin / "gh",
+        """#!/bin/sh
+# Prefer this mock over a real gh on PATH so tests do not hit GitHub.
+if [ "$1" = "attestation" ]; then
+  exit 0
+fi
+exit 1
+""",
+    )
+    _write_executable(
         mock_bin / "curl",
         """#!/bin/sh
 output=""
