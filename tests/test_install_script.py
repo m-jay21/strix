@@ -77,9 +77,13 @@ while [ "$#" -gt 0 ]; do
 done
 case "$url" in
   */SHA256SUMS)
-    hash=$(sha256sum "$STRIX_TEST_ARCHIVE" | awk '{print $1}')
     name=$(basename "$STRIX_TEST_ARCHIVE")
-    printf '%s  %s\\n' "$hash" "$name" > "$output"
+    if [ -n "${STRIX_TEST_BAD_CHECKSUM:-}" ]; then
+      printf '%s  %s\\n' "0" "$name" > "$output"
+    else
+      hash=$(sha256sum "$STRIX_TEST_ARCHIVE" | awk '{print $1}')
+      printf '%s  %s\\n' "$hash" "$name" > "$output"
+    fi
     ;;
   *.intoto.jsonl)
     printf '{"test":true}\\n' > "$output"
@@ -178,3 +182,36 @@ def test_installer_rejects_unsupported_architecture(tmp_path: Path) -> None:
     assert "Unsupported OS/Arch: linux/riscv64" in result.stdout
     assert not curl_log_path.exists()
     assert not (home_path / ".strix").exists()
+
+
+def test_installer_leaves_existing_install_on_checksum_failure(tmp_path: Path) -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    archive_path = _create_release_archive(tmp_path)
+    mock_bin = _create_mock_commands(tmp_path, machine="aarch64")
+    environment, home_path, _curl_log_path = _create_installer_environment(
+        tmp_path,
+        archive_path,
+        mock_bin,
+    )
+    environment["STRIX_TEST_BAD_CHECKSUM"] = "1"
+
+    install_dir = home_path / ".strix" / "bin"
+    install_dir.mkdir(parents=True)
+    existing = install_dir / "strix"
+    _write_executable(existing, "#!/bin/sh\nprintf 'strix 1.0.0\\n'\n")
+    before = existing.read_bytes()
+
+    result = _run_installer(repository_root, environment)
+
+    assert result.returncode != 0
+    assert "Checksum mismatch" in result.stdout
+    assert "Existing Strix installation left unchanged" in result.stdout
+    assert existing.read_bytes() == before
+    assert not (install_dir / "strix.new").exists()
+    installed_result = subprocess.run(  # noqa: S603
+        [str(existing), "--version"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert installed_result.stdout.strip() == "strix 1.0.0"

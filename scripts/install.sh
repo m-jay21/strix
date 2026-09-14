@@ -137,6 +137,9 @@ check_existing_installation() {
 
 abort_unverified() {
     echo -e "${RED}✗ Refusing to install an unverified binary.${NC}"
+    if [[ -x "$INSTALL_DIR/strix" || -x "$INSTALL_DIR/strix.exe" ]]; then
+        echo -e "${MUTED}Existing Strix installation left unchanged.${NC}"
+    fi
     echo -e "${RED}Re-run with STRIX_INSTALL_SKIP_VERIFY=1 to override (at your own risk).${NC}"
     exit 1
 }
@@ -271,7 +274,20 @@ download_and_install() {
     print_message info "\n${CYAN}🦉 Installing Strix${NC} ${MUTED}version: ${NC}$specific_version"
     print_message info "${MUTED}Platform: ${NC}$target\n"
 
-    local tmp_dir=$(mktemp -d)
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+
+    # Never leave a half-written binary in INSTALL_DIR. Stage to *.new and only
+    # rename into place after a verified archive has been extracted. On any
+    # abort (including verification failure), remove the staging file and the
+    # download temp dir; the current install stays untouched.
+    cleanup_install_temps() {
+        cd / >/dev/null 2>&1 || true
+        rm -rf "$tmp_dir"
+        rm -f "$INSTALL_DIR/strix.new" "$INSTALL_DIR/strix.exe.new"
+    }
+    trap cleanup_install_temps EXIT
+
     cd "$tmp_dir"
 
     echo -e "${MUTED}Downloading...${NC}"
@@ -303,15 +319,17 @@ download_and_install() {
     echo -e "${MUTED}Extracting...${NC}"
     if [ "$os" = "windows" ]; then
         unzip -q "$filename"
-        mv "strix-${specific_version}-${target}.exe" "$INSTALL_DIR/strix.exe"
+        mv "strix-${specific_version}-${target}.exe" "$INSTALL_DIR/strix.exe.new"
+        mv -f "$INSTALL_DIR/strix.exe.new" "$INSTALL_DIR/strix.exe"
     else
         tar -xzf "$filename"
-        mv "strix-${specific_version}-${target}" "$INSTALL_DIR/strix"
-        chmod 755 "$INSTALL_DIR/strix"
+        mv "strix-${specific_version}-${target}" "$INSTALL_DIR/strix.new"
+        chmod 755 "$INSTALL_DIR/strix.new"
+        mv -f "$INSTALL_DIR/strix.new" "$INSTALL_DIR/strix"
     fi
 
-    cd - > /dev/null
-    rm -rf "$tmp_dir"
+    trap - EXIT
+    cleanup_install_temps
 
     echo -e "${GREEN}✓ Strix installed to $INSTALL_DIR${NC}"
 }
