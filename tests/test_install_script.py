@@ -203,9 +203,7 @@ def test_installer_downloads_and_runs_linux_arm64_release(tmp_path: Path) -> Non
     gh_log = (tmp_path / "gh.log").read_text(encoding="utf-8")
     assert "--repo usestrix/strix" in gh_log
     assert "--bundle strix-linux-arm64.intoto.jsonl" in gh_log
-    assert (
-        "--signer-workflow usestrix/strix/.github/workflows/build-release.yml" in gh_log
-    )
+    assert "--signer-workflow usestrix/strix/.github/workflows/build-release.yml" in gh_log
     assert "--deny-self-hosted-runners" in gh_log
     assert not (tmp_path / "cosign.log").exists()
 
@@ -368,9 +366,7 @@ def test_installer_uses_cosign_when_gh_cannot_verify(tmp_path: Path) -> None:
     assert "(cosign)" in result.stdout
     cosign_log = (tmp_path / "cosign.log").read_text(encoding="utf-8")
     assert "--new-bundle-format" in cosign_log
-    assert "--certificate-oidc-issuer https://token.actions.githubusercontent.com" in (
-        cosign_log
-    )
+    assert "--certificate-oidc-issuer https://token.actions.githubusercontent.com" in (cosign_log)
     assert "build-release.yml" in cosign_log
     assert "--type slsaprovenance1" in cosign_log
     assert (home_path / ".strix/bin/strix").exists()
