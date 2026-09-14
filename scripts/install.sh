@@ -105,6 +105,9 @@ print_message() {
     echo -e "${color}${message}${NC}"
 }
 
+# Remove other copies of strix from PATH (pipx, leftover binaries) only after
+# a verified install has been written to INSTALL_DIR. Calling this earlier
+# would leave the user with no working Strix if checksum/provenance then fail.
 check_existing_installation() {
     local found_paths=()
     while IFS= read -r -d '' path; do
@@ -257,8 +260,6 @@ verify_provenance() {
 }
 
 check_version() {
-    check_existing_installation
-
     if [[ -x "$INSTALL_DIR/strix" ]]; then
         installed_version=$("$INSTALL_DIR/strix" --version 2>/dev/null | awk '{print $2}' || echo "")
         if [[ "$installed_version" == "$specific_version" ]]; then
@@ -332,6 +333,7 @@ download_and_install() {
     cleanup_install_temps
 
     echo -e "${GREEN}✓ Strix installed to $INSTALL_DIR${NC}"
+    check_existing_installation
 }
 
 check_docker() {

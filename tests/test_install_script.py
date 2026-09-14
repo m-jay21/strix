@@ -235,6 +235,40 @@ def test_installer_rejects_unsupported_architecture(tmp_path: Path) -> None:
     assert not (home_path / ".strix").exists()
 
 
+def test_installer_leaves_external_strix_on_checksum_failure(tmp_path: Path) -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    archive_path = _create_release_archive(tmp_path)
+    mock_bin = _create_mock_commands(tmp_path, machine="aarch64")
+    environment, home_path, _curl_log_path = _create_installer_environment(
+        tmp_path,
+        archive_path,
+        mock_bin,
+    )
+    environment["STRIX_TEST_BAD_CHECKSUM"] = "1"
+
+    other_bin = tmp_path / "other-bin"
+    other_bin.mkdir()
+    external = other_bin / "strix"
+    _write_executable(external, "#!/bin/sh\nprintf 'strix 1.0.0\\n'\n")
+    environment["PATH"] = f"{other_bin}:{environment['PATH']}"
+    before = external.read_bytes()
+
+    result = _run_installer(repository_root, environment)
+
+    assert result.returncode != 0
+    assert "Checksum mismatch" in result.stdout
+    assert external.exists()
+    assert external.read_bytes() == before
+    assert not (home_path / ".strix/bin/strix").exists()
+    installed_result = subprocess.run(  # noqa: S603
+        [str(external), "--version"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert installed_result.stdout.strip() == "strix 1.0.0"
+
+
 def test_installer_leaves_existing_install_on_checksum_failure(tmp_path: Path) -> None:
     repository_root = Path(__file__).resolve().parents[1]
     archive_path = _create_release_archive(tmp_path)
